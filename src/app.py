@@ -5,11 +5,12 @@ A super simple FastAPI application that allows students to view and sign up
 for extracurricular activities at Mergington High School.
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, JSONResponse
 import os
 from pathlib import Path
+import json
 
 app = FastAPI(title="Mergington High School API",
               description="API for viewing and signing up for extracurricular activities")
@@ -18,6 +19,24 @@ app = FastAPI(title="Mergington High School API",
 current_dir = Path(__file__).parent
 app.mount("/static", StaticFiles(directory=os.path.join(Path(__file__).parent,
           "static")), name="static")
+
+# Load teachers
+teachers = json.loads((current_dir / "teachers.json").read_text())
+
+@app.post("/login")
+def login(request: Request, username: str, password: str):
+    for teacher in teachers:
+        if teacher["username"] == username and teacher["password"] == password:
+            response = JSONResponse({"success": True})
+            response.set_cookie("admin", "true", httponly=True)
+            return response
+    return {"success": False}
+
+@app.post("/logout")
+def logout():
+    response = JSONResponse({"success": True})
+    response.delete_cookie("admin")
+    return response
 
 # In-memory activity database
 activities = {
@@ -95,8 +114,10 @@ def get_activities():
 
 
 @app.post("/activities/{activity_name}/signup")
-def signup_for_activity(activity_name: str, email: str):
+def signup_for_activity(activity_name: str, email: str, request: Request):
     """Sign up a student for an activity"""
+    if request.cookies.get("admin") != "true":
+        raise HTTPException(status_code=403, detail="Admin access required")
     # Validate activity exists
     if activity_name not in activities:
         raise HTTPException(status_code=404, detail="Activity not found")
@@ -117,8 +138,10 @@ def signup_for_activity(activity_name: str, email: str):
 
 
 @app.delete("/activities/{activity_name}/unregister")
-def unregister_from_activity(activity_name: str, email: str):
+def unregister_from_activity(activity_name: str, email: str, request: Request):
     """Unregister a student from an activity"""
+    if request.cookies.get("admin") != "true":
+        raise HTTPException(status_code=403, detail="Admin access required")
     # Validate activity exists
     if activity_name not in activities:
         raise HTTPException(status_code=404, detail="Activity not found")
